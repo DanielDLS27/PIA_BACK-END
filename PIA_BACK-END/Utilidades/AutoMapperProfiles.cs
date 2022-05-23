@@ -13,6 +13,8 @@ namespace PIA_BACK_END.Utilidades
             CreateMap<Rifa, GetRifaDTO>();
             CreateMap<PremioCreacionDTO, Premio>();
             CreateMap<ParticipanteCreacionDTO, Participante>();
+            CreateMap<ModificarRifaDTO, Rifa>();
+            CreateMap<RifaPatchDTO, Rifa>().ReverseMap();
         }
     }
 }

@@ -26,7 +26,7 @@ namespace PIA_BACK_END.Controllers
 
             if (existeParticipante)
             {
-                return BadRequest("Ya existe un participante con ese nombre");
+                return BadRequest("Ya existe un participante con ese email");
             }
 
             var rifa = mapper.Map<Participante>(participanteCreacionDTO);

@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 using PIA_BACK_END.DTOs;
 using PIA_BACK_END.Entidades;
 using Microsoft.AspNetCore.Identity;
+using PIA_BACK_END.Validaciones;
+using Microsoft.AspNetCore.JsonPatch;
 
 namespace PIA_BACK_END.Controllers
 {
@@ -17,15 +19,19 @@ namespace PIA_BACK_END.Controllers
         private readonly ApplicationDbContext context;
         private readonly IMapper mapper;
         private readonly UserManager<IdentityUser> userManager;
+        private readonly ILogger<RifasController> logger;
 
-        public RifasController(ApplicationDbContext context, IMapper mapper, UserManager<IdentityUser> userManager)
+        public RifasController(ApplicationDbContext context, IMapper mapper, UserManager<IdentityUser> userManager, ILogger<RifasController> logger)
         {
             this.context = context;
             this.mapper = mapper;
             this.userManager = userManager;
+            this.logger = logger;
         }
 
         [HttpPost("agregar")]
+        [Authorize(Policy = "esAdmin")]
+        [PrimeraLetraMayuscula]
         public async Task<ActionResult> Post([FromBody] RifaCreacionDTO rifaCreacionDTO)
         {
             var existeRifa = await context.rifas.AnyAsync(x => x.Nombre == rifaCreacionDTO.Nombre);
@@ -123,7 +129,7 @@ namespace PIA_BACK_END.Controllers
             };
 
             return boletoGanador;
-        }   
+        } 
 
         [HttpGet("{id:int}")]
         [AllowAnonymous]
@@ -151,17 +157,98 @@ namespace PIA_BACK_END.Controllers
             return mapper.Map<List<RifaDTO>>(rifas);
         }
 
+
+        [HttpGet("{idDeRifa:int}/NumerosDeLoteriaDisponibles")]
+        [AllowAnonymous]
+        public async Task<ActionResult<string>> GetNumerosLoteriaDisponibles(int idDeRifa)
+        {
+            var participacionesRifaDB = await context.rifaParticipante.Where(x => x.idDeRifa == idDeRifa).ToListAsync();
+
+            var listaNumerosDisponibles = new List<int>();
+            for (int i = 1; i <= 54; i++)
+            {
+                listaNumerosDisponibles.Add(i);
+            }
+
+            foreach (var par in participacionesRifaDB)
+            {
+                foreach (var i in listaNumerosDisponibles)
+                {
+                    if(i == par.numeroLoteria)
+                    {
+                        listaNumerosDisponibles.Remove(i);
+                        break;
+                    }
+                }
+            }
+
+            var str = "";
+
+            foreach(var  num in listaNumerosDisponibles)
+            {
+                str = str + " " + num.ToString();
+            }
+
+            return str;
+        }
+
         [HttpGet("consultar")]
         [AllowAnonymous]
         public async Task<ActionResult<List<GetRifaDTO>>> Get()
         {
+            logger.LogInformation("OBTENIENDO RIFAS...");
             var rifas = await context.rifas.ToListAsync();
             return mapper.Map<List<GetRifaDTO>>(rifas);
         }
 
-        
+        [HttpPut("{id:int}")]
+        [Authorize(Policy = "esAdmin")]
+        public async Task<ActionResult> Put(Rifa rifa, int id)
+        {
+            var exist = await context.rifas.AnyAsync(x => x.Id == id);
+            if (!exist)
+            {
+                return NotFound();
+            }
+
+            if (rifa.Id != id)
+            {
+                return BadRequest("El id de la rifa no coincide con el establecido en la url.");
+            }
+
+            context.Update(rifa);
+            await context.SaveChangesAsync();
+            return Ok();
+        }
+
+        [HttpPatch("{id:int}")]
+        public async Task<ActionResult> Patch(int id, JsonPatchDocument<RifaPatchDTO> patchDocument)
+        {
+            if (patchDocument == null) { return BadRequest(); }
+
+            var rifaDB = await context.rifas.FirstOrDefaultAsync(x => x.Id == id);
+
+            if (rifaDB == null) { return NotFound(); }
+
+            var rifaDTO = mapper.Map<RifaPatchDTO>(rifaDB);
+
+            patchDocument.ApplyTo(rifaDTO);
+
+            var isValid = TryValidateModel(rifaDTO);
+
+            if (!isValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            mapper.Map(rifaDTO, rifaDB);
+
+            await context.SaveChangesAsync();
+            return NoContent();
+        }
 
         [HttpDelete]
+        [Authorize(Policy = "esAdmin")]
         public async Task<ActionResult> Delete(int id)
         {
             var exist = await context.rifas.AnyAsync(x => x.Id == id);
